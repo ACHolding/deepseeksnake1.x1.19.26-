@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐍 Classic Snake Game</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background: linear-gradient(145deg, #1a2a1a, #0f1a0f);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+
+        .game-container {
+            background: #1e2b1e;
+            padding: 24px 24px 30px;
+            border-radius: 42px;
+            box-shadow: 
+                0 25px 35px rgba(0, 0, 0, 0.7),
+                inset 0 1px 4px rgba(255, 255, 255, 0.1);
+            border: 1px solid #3c5a3c;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 8px 18px 8px;
+            color: #b8e0b8;
+            text-shadow: 0 2px 0 #0a120a;
+            letter-spacing: 1px;
+        }
+
+        .score-box {
+            background: #0e1a0e;
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 1.4rem;
+            color: #d4f0d4;
+            box-shadow: inset 0 4px 6px rgba(0, 0, 0, 0.8), 0 2px 0 #304d30;
+            border: 1px solid #3f663f;
+            min-width: 120px;
+            text-align: center;
+        }
+
+        .restart-btn {
+            background: #2f4a2f;
+            border: none;
+            border-radius: 40px;
+            padding: 8px 20px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #e2ffe2;
+            cursor: pointer;
+            box-shadow: 0 7px 0 #0d1a0d, 0 8px 12px black;
+            transition: all 0.07s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid #5b865b;
+            letter-spacing: 0.5px;
+        }
+
+        .restart-btn:active {
+            transform: translateY(5px);
+            box-shadow: 0 2px 0 #0d1a0d, 0 5px 10px black;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 32px;
+            background: #0d180d;
+            box-shadow: 
+                inset 0 0 40px rgba(0, 0, 0, 0.9),
+                0 20px 25px -8px black;
+            border: 2px solid #3e623e;
+            width: 400px;
+            height: 400px;
+        }
+
+        .controls-note {
+            display: flex;
+            justify-content: center;
+            gap: 28px;
+            color: #6c8f6c;
+            margin-top: 18px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            letter-spacing: 0.8px;
+        }
+
+        .key {
+            background: #1f2e1f;
+            border-radius: 12px;
+            padding: 4px 12px;
+            border: 1px solid #477547;
+            box-shadow: 0 3px 0 #0b130b;
+            color: #c2e0c2;
+            font-weight: 700;
+        }
+
+        .game-over-message {
+            position: absolute;
+            background: rgba(10, 20, 10, 0.92);
+            backdrop-filter: blur(3px);
+            color: #f4ffe4;
+            font-size: 1.9rem;
+            font-weight: 800;
+            text-align: center;
+            padding: 20px 30px;
+            border-radius: 60px;
+            border: 2px solid #7aa07a;
+            box-shadow: 0 10px 30px black;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            letter-spacing: 2px;
+            text-shadow: 0 4px 0 #1a301a;
+        }
+    </style>
+</head>
+<body>
+<div class="game-container" style="position: relative;">
+    <div class="header">
+        <div class="score-box">🍎 <span id="scoreDisplay">0</span></div>
+        <button class="restart-btn" id="restartButton">
+            <span>↻</span> NEW GAME
+        </button>
+    </div>
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+    <div class="controls-note">
+        <span><span class="key">↑ ↓ ← →</span> or <span class="key">W A S D</span></span>
+    </div>
+    <div id="gameOverMsg" class="game-over-message" style="top: 50%; left: 50%; transform: translate(-50%, -50%);">GAME OVER</div>
+</div>
+
+<script>
+    (function() {
+        // ---------- CONFIGURATION ----------
+        const GRID_SIZE = 20;           // 20x20 cells
+        const CELL_SIZE = 20;           // 400px / 20 = 20px per cell
+        const TICK_INTERVAL_MS = 150;   // speed (ms per move)
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreSpan = document.getElementById('scoreDisplay');
+        const gameOverMsg = document.getElementById('gameOverMsg');
+
+        // ---------- GAME STATE ----------
+        let snake = [];                 // array of {x, y} from head to tail
+        let food = { x: 8, y: 10 };
+        let direction = { dx: 0, dy: 0 };     // current movement direction
+        let nextDirection = { dx: 0, dy: 0 }; // buffered direction
+        let score = 0;
+        let gameActive = false;         // true when playing (not paused/gameover)
+        let gameOverFlag = false;       // show game over state
+        let gameLoopInterval = null;
+
+        // ---------- HELPER FUNCTIONS ----------
+        function randomInt(max) {
+            return Math.floor(Math.random() * max);
+        }
+
+        // Generate a new food position that is not on the snake
+        function generateRandomFood() {
+            const totalCells = GRID_SIZE * GRID_SIZE;
+            if (snake.length >= totalCells) {
+                // The board is full → win condition (but we treat as game over / win)
+                return null;
+            }
+
+            // Create a set of occupied cells for fast lookup
+            const occupied = new Set(snake.map(seg => `${seg.x},${seg.y}`));
+            const freeCells = [];
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (!occupied.has(`${x},${y}`)) {
+                        freeCells.push({ x, y });
+                    }
+                }
+            }
+            if (freeCells.length === 0) return null; // full board
+            const randIndex = randomInt(freeCells.length);
+            return freeCells[randIndex];
+        }
+
+        // ---------- INIT / RESET ----------
+        function resetGame() {
+            // Stop any running interval
+            if (gameLoopInterval) {
+                clearInterval(gameLoopInterval);
+                gameLoopInterval = null;
+            }
+
+            // Initial snake: length 3, horizontal, head at (10,10) going right
+            snake = [
+                { x: 10, y: 10 }, // head
+                { x: 9, y: 10 },
+                { x: 8, y: 10 }   // tail
+            ];
+
+            // Set initial direction: moving right
+            direction = { dx: 1, dy: 0 };
+            nextDirection = { dx: 1, dy: 0 };
+
+            score = 0;
+            gameActive = true;
+            gameOverFlag = false;
+            gameOverMsg.style.opacity = '0';
+            scoreSpan.textContent = '0';
+
+            // Place first food (ensure not on snake)
+            const newFood = generateRandomFood();
+            if (newFood) {
+                food = newFood;
+            } else {
+                // extremely unlikely at start (snake length 3, grid 400 cells)
+                food = { x: 15, y: 15 };
+            }
+
+            // Draw everything
+            drawGame();
+
+            // Start the game loop
+            gameLoopInterval = setInterval(gameTick, TICK_INTERVAL_MS);
+        }
+
+        // ---------- GAME OVER ----------
+        function setGameOver() {
+            if (!gameActive) return; // already game over
+            gameActive = false;
+            gameOverFlag = true;
+            gameOverMsg.style.opacity = '1';
+            if (gameLoopInterval) {
+                clearInterval(gameLoopInterval);
+                gameLoopInterval = null;
+            }
+            drawGame(); // draw final state with game over message overlay (canvas already drawn)
+        }
+
+        // ---------- COLLISION CHECKS ----------
+        function checkSelfCollision(head) {
+            // Check if head collides with any part of the body (skip the head itself)
+            for (let i = 1; i < snake.length; i++) {
+                if (snake[i].x === head.x && snake[i].y === head.y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function isOutOfBounds(pos) {
+            return pos.x < 0 || pos.x >= GRID_SIZE || pos.y < 0 || pos.y >= GRID_SIZE;
+        }
+
+        // ---------- MAIN TICK (called every TICK_INTERVAL_MS) ----------
+        function gameTick() {
+            if (!gameActive) return;
+
+            // 1. commit the buffered direction (if it's not opposite to current)
+            //    (direction changes already validated in key handler)
+            if (nextDirection.dx !== 0 || nextDirection.dy !== 0) {
+                // Prevent reversing: you cannot go directly backwards
+                if (!(direction.dx === -nextDirection.dx && direction.dy === -nextDirection.dy)) {
+                    direction = { dx: nextDirection.dx, dy: nextDirection.dy };
+                }
+            }
+
+            // 2. compute new head position
+            const head = snake[0];
+            const newHead = {
+                x: head.x + direction.dx,
+                y: head.y + direction.dy
+            };
+
+            // 3. check wall collision
+            if (isOutOfBounds(newHead)) {
+                setGameOver();
+                drawGame(); // redraw to show final state
+                return;
+            }
+
+            // 4. check if food is eaten (before moving snake)
+            const isEating = (newHead.x === food.x && newHead.y === food.y);
+
+            // 5. prepare new snake array (copy)
+            let newSnake = [newHead, ...snake]; // add new head, keep old body
+
+            if (isEating) {
+                // When eating: keep the tail (snake grows by 1)
+                // So we don't remove the last segment.
+                // newSnake already has old body + new head = length +1
+                // But we must check self-collision with the new head (could happen)
+                // First check self-collision with the updated newSnake body (without tail removal)
+                // However the head may collide with its own body (except itself, but it's the head)
+                // We'll check after we decide about tail.
+                // Simpler: we'll check collision on the newSnake minus tail? Actually standard:
+                // When eating, we keep tail, so we check if newHead collides with any segment of 
+                // the old snake (except tail is still there). So check against snake (old) 
+                // but note that newHead might hit the old tail? No, because tail is removed only when not eating.
+                // But the old snake includes the tail, and we are NOT removing the tail -> we must check 
+                // if newHead collides with any part of old snake (including tail). That's correct.
+                // Let's check self-collision using newSnake but we must skip index 0 (newHead itself).
+                // newSnake = [newHead, oldHead, oldBody...]
+                // We'll write a function that checks if newHead collides with any segment of newSnake from index1 onward.
+                // That is equivalent to checking old snake array for collision with newHead.
+                // Use that.
+                const collision = snake.some(segment => segment.x === newHead.x && segment.y === newHead.y);
+                if (collision) {
+                    setGameOver();
+                    drawGame();
+                    return;
+                }
+
+                // No collision: snake grows
+                snake = newSnake;
+                score++;
+                scoreSpan.textContent = score;
+
+                // Generate new food (if possible)
+                const newFood = generateRandomFood();
+                if (newFood) {
+                    food = newFood;
+                } else {
+                    // Board is full → win condition, we treat as game over (but positive)
+                    // You can consider it a win, but we'll show GAME OVER anyway.
+                    setGameOver();
+                    drawGame();
+                    return;
+                }
+            } else {
+                // Not eating: remove the tail (pop last element)
+                newSnake.pop(); // remove old tail
+                // Now check self-collision: newHead collides with any segment in newSnake (excluding head index0)
+                const collision = newSnake.slice(1).some(segment => segment.x === newHead.x && segment.y === newHead.y);
+                if (collision) {
+                    setGameOver();
+                    drawGame();
+                    return;
+                }
+                // Commit the new snake
+                snake = newSnake;
+            }
+
+            // 6. Redraw everything
+            drawGame();
+        }
+
+        // ---------- DRAWING ----------
+        function drawGame() {
+            ctx.clearRect(0, 0, 400, 400);
+
+            // draw subtle grid (very faint)
+            ctx.strokeStyle = '#1e331e';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * CELL_SIZE, 0);
+                ctx.lineTo(i * CELL_SIZE, canvas.height);
+                ctx.stroke();
+                ctx.moveTo(0, i * CELL_SIZE);
+                ctx.lineTo(canvas.width, i * CELL_SIZE);
+                ctx.stroke();
+            }
+
+            // draw food (apple style)
+            ctx.shadowColor = '#fbffb0';
+            ctx.shadowBlur = 14;
+            ctx.fillStyle = '#ff4d4d';
+            ctx.beginPath();
+            const fx = food.x * CELL_SIZE + CELL_SIZE / 2;
+            const fy = food.y * CELL_SIZE + CELL_SIZE / 2;
+            ctx.arc(fx, fy, CELL_SIZE / 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            // shine
+            ctx.shadowBlur = 6;
+            ctx.fillStyle = '#ffb3b3';
+            ctx.beginPath();
+            ctx.arc(fx - 4, fy - 4, 3, 0, Math.PI * 2);
+            ctx.fill();
+            // leaf
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#8fdb6b';
+            ctx.beginPath();
+            ctx.ellipse(fx + 4, fy - 9, 3, 5, 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0; // reset for snake
+
+            // draw snake (rounded segments, gradient)
+            for (let i = 0; i < snake.length; i++) {
+                const seg = snake[i];
+                const x = seg.x * CELL_SIZE;
+                const y = seg.y * CELL_SIZE;
+                const padding = i === 0 ? 1 : 2; // head slightly larger
+                const radius = 6;
+
+                // head is brighter with glow
+                if (i === 0) {
+                    ctx.shadowColor = '#a5ffa5';
+                    ctx.shadowBlur = 18;
+                    ctx.fillStyle = '#7ed47e';
+                } else {
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#3f9e3f';
+                    // gradient from bright green to darker green
+                    const gradient = ctx.createRadialGradient(
+                        x + 8, y + 8, 2,
+                        x + 10, y + 10, 14
+                    );
+                    gradient.addColorStop(0, '#6fbf6f');
+                    gradient.addColorStop(1, '#2e6b2e');
+                    ctx.fillStyle = gradient;
+                }
+
+                // rounded square
+                ctx.beginPath();
+                ctx.roundRect(x + 1.5, y + 1.5, CELL_SIZE - 3, CELL_SIZE - 3, radius);
+                ctx.fill();
+
+                // eyes on head
+                if (i === 0) {
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#f0f7f0';
+                    ctx.beginPath();
+                    ctx.arc(x + 6, y + 6, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(x + 14, y + 6, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#1e2b1e';
+                    ctx.beginPath();
+                    ctx.arc(x + 6, y + 5.5, 1.2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(x + 14, y + 5.5, 1.2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            // reset shadow
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+        }
+
+        // helper for canvas roundRect
+        CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+            if (w < 2 * r) r = w / 2;
+            if (h < 2 * r) r = h / 2;
+            this.moveTo(x + r, y);
+            this.lineTo(x + w - r, y);
+            this.quadraticCurveTo(x + w, y, x + w, y + r);
+            this.lineTo(x + w, y + h - r);
+            this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            this.lineTo(x + r, y + h);
+            this.quadraticCurveTo(x, y + h, x, y + h - r);
+            this.lineTo(x, y + r);
+            this.quadraticCurveTo(x, y, x + r, y);
+            this.closePath();
+            return this;
+        };
+
+        // ---------- KEYBOARD CONTROLS ----------
+        function handleKeyDown(e) {
+            const key = e.key;
+            // Prevent arrow keys from scrolling page
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 'a', 'A', 's', 'S', 'd', 'D'].includes(key)) {
+                e.preventDefault();
+            }
+
+            // If game is not active, ignore direction keys (but maybe restart? we have button)
+            if (!gameActive) return;
+
+            let newDx = 0, newDy = 0;
+
+            // Arrow keys
+            if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+                newDx = 0; newDy = -1;
+            } else if (key === 'ArrowDown' || key === 's' || key === 'S') {
+                newDx = 0; newDy = 1;
+            } else if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
+                newDx = -1; newDy = 0;
+            } else if (key === 'ArrowRight' || key === 'd' || key === 'D') {
+                newDx = 1; newDy = 0;
+            } else {
+                return; // not a direction key
+            }
+
+            // Prevent 180-degree turn: cannot go opposite to current direction
+            // BUT we also must consider the *buffered* nextDirection? Actually we should prevent
+            // the new direction from being opposite to the current committed direction.
+            // However, if the player presses two keys quickly (e.g., up then left) we should allow
+            // left even if current direction is right? Actually no: current direction might be right,
+            // pressing up (valid), then left (valid if we consider current direction is still right? 
+            // Actually we use the current direction (direction) to check reversal.
+            // But the tick will commit nextDirection. Standard snake: you can't reverse direction.
+            // Even with buffering, if direction is right, pressing left should be ignored (because it's opposite).
+            // So we check against `direction` (the last committed direction).
+            const isOpposite = (direction.dx === -newDx && direction.dy === -newDy);
+            if (isOpposite) {
+                return; // ignore reverse
+            }
+
+            // Set the buffered direction
+            nextDirection = { dx: newDx, dy: newDy };
+        }
+
+        // ---------- EVENT LISTENERS ----------
+        window.addEventListener('keydown', handleKeyDown);
+
+        // Restart button
+        document.getElementById('restartButton').addEventListener('click', () => {
+            resetGame();
+        });
+
+        // Also restart with 'R' key? optional but nice
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'r' || e.key === 'R') {
+                e.preventDefault();
+                resetGame();
+            }
+        });
+
+        // Prevent context menu on canvas (right click)
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // ---------- START THE GAME ----------
+        resetGame();
+    })();
+</script>
+</body>
+</html>
